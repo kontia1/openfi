@@ -25,10 +25,7 @@ const tokenDecimals = {
   NVIDIA: 18
 };
 
-// Amounts for mint/supply/withdraw/borrow/repay per token (as string)
-const mintAmount = "100";
-const supplyAmount = "10";
-const withdrawAmount = "1";
+// Borrow amounts per your original request
 const borrowAmounts = {
   USDC: "0.1",
   USDT: "0.1",
@@ -37,9 +34,10 @@ const borrowAmounts = {
   TSLA: "0.00005",
   NVIDIA: "0.00003"
 };
-const repayAmounts = borrowAmounts; // Repay same as borrow, adjust if needed
+const repayAmounts = borrowAmounts; // Repay same as borrow
 
 // Mint router config (for testnet/mock tokens)
+const mintAmount = "100";
 const mintRouter = {
   address: "0x2e9d89d372837f71cb529e5ba85bfbc1785c69cd",
   abi: [
@@ -96,8 +94,6 @@ const withdrawAbi = [
 ];
 
 // Function selectors for router raw calls
-const depositSelector = "e8eda9df";   // deposit(address,uint256,address)
-const withdrawSelector = "69328dec";  // withdraw(address,uint256,address)
 const borrowSelector = "a415bcad";    // borrow(address,uint256,uint256,uint16,address)
 const repaySelector = "26a4e8d2";     // repay(address,uint256,uint256,address)
 const interestRateMode = 2;
@@ -107,7 +103,6 @@ function strip0x(hex) {
   return hex.startsWith("0x") ? hex.slice(2) : hex;
 }
 
-// For borrow/repay raw calldata
 function encodeRouterData(selector, asset, amount, interestRateMode, onBehalfOf) {
   let data = "0x" + selector +
     strip0x(zeroPadValue(asset, 32).toString("hex")) +
@@ -120,7 +115,12 @@ function encodeRouterData(selector, asset, amount, interestRateMode, onBehalfOf)
   return data;
 }
 
-// --- INIT ---
+function getRandomSupplyAmount(min, max, decimals) {
+  // Returns a BigInt for ethers
+  const rand = Math.random() * (max - min) + min;
+  return ethers.parseUnits(rand.toFixed(6), decimals);
+}
+
 const privateKeys = fs.readFileSync('data.txt', 'utf-8')
   .split('\n').map(l => l.trim()).filter(Boolean);
 
@@ -131,12 +131,10 @@ if (privateKeys.length === 0) {
 
 const provider = new ethers.JsonRpcProvider(RPC_URL);
 
-// --- MAIN FUNCTION ---
 async function main() {
   for (const pk of privateKeys) {
     const wallet = new ethers.Wallet(pk, provider);
     const onBehalfOf = wallet.address;
-
     console.log(`\n======== WALLET: ${wallet.address} ========`);
 
     // ----- MINT -----
@@ -144,7 +142,6 @@ async function main() {
     for (const [symbol, tokenAddress] of Object.entries(tokens)) {
       const decimals = tokenDecimals[symbol];
       const amt = ethers.parseUnits(mintAmount, decimals);
-
       try {
         console.log(`[${symbol}] Minting ${mintAmount} (${amt})...`);
         const tx = await mintContract[mintRouter.func](
@@ -191,15 +188,18 @@ async function main() {
 
     // ----- SUPPLY -----
     const supplyContract = new ethers.Contract(routerAddress, supplyAbi, wallet);
+    // Save actual supplied amount for withdraw step
+    const suppliedAmounts = {};
     for (const [symbol, tokenAddress] of Object.entries(tokens)) {
       const decimals = tokenDecimals[symbol];
-      const amt = ethers.parseUnits(supplyAmount, decimals);
-
+      // Random supply between 50 and 80
+      const supplyAmt = getRandomSupplyAmount(50, 80, decimals);
+      suppliedAmounts[symbol] = supplyAmt;
       try {
-        console.log(`[${symbol}] Supplying ${supplyAmount} (${amt})...`);
+        console.log(`[${symbol}] Supplying ${ethers.formatUnits(supplyAmt, decimals)} (${supplyAmt})...`);
         const tx = await supplyContract.supply(
           tokenAddress,
-          amt,
+          supplyAmt,
           wallet.address,
           0,
           { gasPrice: ethers.parseUnits("5", "gwei") }
@@ -216,13 +216,13 @@ async function main() {
     const withdrawContract = new ethers.Contract(routerAddress, withdrawAbi, wallet);
     for (const [symbol, tokenAddress] of Object.entries(tokens)) {
       const decimals = tokenDecimals[symbol];
-      const amt = ethers.parseUnits(withdrawAmount, decimals);
-
+      // Withdraw 10% of supplied
+      const withdrawAmt = suppliedAmounts[symbol] / 10n;
       try {
-        console.log(`[${symbol}] Withdrawing ${withdrawAmount} (${amt})...`);
+        console.log(`[${symbol}] Withdrawing 10% = ${ethers.formatUnits(withdrawAmt, decimals)} (${withdrawAmt})...`);
         const tx = await withdrawContract.withdraw(
           tokenAddress,
-          amt,
+          withdrawAmt,
           wallet.address,
           { gasPrice: ethers.parseUnits("5", "gwei") }
         );
@@ -279,4 +279,4 @@ async function main() {
 main().catch(e => {
   console.error("Fatal error:", e);
   process.exit(1);
-})
+});
