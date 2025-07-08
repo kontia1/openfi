@@ -2,7 +2,7 @@ const { ethers, Wallet, JsonRpcProvider, toBeHex, zeroPadValue, parseUnits, Cont
 const fs = require("fs");
 
 // --- CONFIGURATION ---
-const RPC_URL = "https://testnet.dplabs-internal.com";
+const RPC_URL = "https://api.zan.top/node/v1/pharos/testnet/c99f5c46d6bf4126a26df3bf19e25c6d";
 const routerAddress = "0xad3b4e20412a097f87cd8e8d84fbbe17ac7c89e9";
 
 // Token addresses (symbol: address)
